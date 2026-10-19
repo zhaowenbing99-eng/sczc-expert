@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>四川政府采购评审专家 · 考前一站式冲刺</title>
+<meta name="description" content="基于 374 页培训教材重构的考点卡片 / 数字速记 / 易混辨析 / 刷题 / 模拟考一体化备考系统">
+<meta name="theme-color" content="#3b5bdb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="评审冲刺">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div id="app" hidden>
+
+  <!-- ══════════ 侧栏（桌面） ══════════ -->
+  <aside class="rail" id="rail">
+    <div class="brand">
+      <div class="brand-mark">评</div>
+      <div class="brand-text">
+        <strong>评审专家冲刺</strong>
+        <span>四川政府采购 · 2026</span>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item" data-view="dash"><i>◉</i><span>总览</span></button>
+      <button class="nav-item" data-view="learn"><i>▤</i><span>考点卡片</span></button>
+      <button class="nav-item" data-view="flash"><i>⧉</i><span>闪卡自测</span></button>
+      <button class="nav-item" data-view="numbers"><i>№</i><span>数字速记</span></button>
+      <button class="nav-item" data-view="confuse"><i>⇄</i><span>易混辨析</span></button>
+      <button class="nav-item" data-view="quiz"><i>✎</i><span>刷题</span></button>
+      <button class="nav-item" data-view="exam"><i>⏱</i><span>模拟考</span></button>
+      <button class="nav-item" data-view="wrong"><i>✗</i><span>错题本<span class="badge" id="wrongCount"></span></span></button>
+      <button class="nav-item" data-view="laws"><i>§</i><span>法规速查</span></button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="mini-progress">
+        <div class="mp-head"><span>总掌握度</span><b id="railPct">0%</b></div>
+        <div class="mp-bar"><i id="railBar" style="width:0"></i></div>
+        <div class="mp-sub" id="railSub">0 / 0 考点</div>
+      </div>
+      <div class="rail-actions">
+        <button class="ghost sm" id="btnTheme" title="切换深浅色 (T)">◐ 主题</button>
+        <button class="ghost sm" id="btnReset" title="清除本机学习记录">↺ 重置</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════ 主区 ══════════ -->
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="btnMenu" aria-label="菜单">☰</button>
+      <div class="crumbs" id="crumbs"><b>总览</b></div>
+      <div class="topbar-right">
+        <div class="searchbox">
+          <span>⌕</span>
+          <input id="globalSearch" type="search" placeholder="搜考点 / 法条 / 题目…  ( / 唤起)" autocomplete="off">
+          <kbd>/</kbd>
+        </div>
+        <button class="icon-btn only-mobile" id="btnMobileSearch" aria-label="搜索">⌕</button>
+        <span class="m-ratio only-mobile" id="mRatio">0%</span>
+        <button class="icon-btn" id="btnHelp" title="快捷键与说明 (?)">?</button>
+      </div>
+    </header>
+
+    <div class="viewport" id="view"></div>
+  </main>
+
+  <!-- ══════════ 底部标签栏（手机） ══════════ -->
+  <nav class="tabbar" id="tabbar">
+    <button data-view="dash"><i>◉</i><span>总览</span></button>
+    <button data-view="learn"><i>▤</i><span>卡片</span></button>
+    <button data-view="quiz"><i>✎</i><span>刷题</span></button>
+    <button data-view="numbers"><i>№</i><span>数字</span></button>
+    <button data-more="1"><i>⋯</i><span>更多</span></button>
+  </nav>
+
+  <!-- ══════════ 手机全屏搜索 ══════════ -->
+  <div class="msearch" id="msearch" hidden>
+    <div class="msearch-bar">
+      <span>⌕</span>
+      <input id="msearchInput" type="search" placeholder="搜考点 / 法条 / 题目" autocomplete="off" enterkeyhint="search">
+      <button id="msearchClose">取消</button>
+    </div>
+    <div class="msearch-results" id="msearchResults"></div>
+  </div>
+
+</div>
+
+<!-- 启动屏 -->
+<div id="boot" class="boot">
+  <div class="boot-inner">
+    <div class="boot-spinner"></div>
+    <p>正在装载考点库…</p>
+  </div>
+</div>
+
+<!-- 全局弹层 -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="data.bundle.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
