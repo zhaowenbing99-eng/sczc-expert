@@ -16,6 +16,26 @@
 </head>
 <body>
 
+<!-- ══════════ 学习码门禁 ══════════ -->
+<div id="gate" class="gate" hidden>
+  <div class="gate-card">
+    <div class="gate-logo">评</div>
+    <h1>四川政府采购评审专家<br>考前冲刺</h1>
+    <p class="gate-sub">请输入学习码后开始使用</p>
+    <form id="gateForm" autocomplete="off">
+      <input id="gateInput" type="text" inputmode="text" autocapitalize="characters"
+             autocomplete="off" spellcheck="false" maxlength="24"
+             placeholder="例如 PSE7K4M9QX">
+      <button type="submit" id="gateBtn">进入学习系统</button>
+    </form>
+    <p class="gate-err" id="gateErr" role="alert"></p>
+    <div class="gate-foot">
+      393 条考点 · 550 道题 · 可离线使用<br>
+      验证一次后本机长期有效
+    </div>
+  </div>
+</div>
+
 <div id="app" hidden>
 
   <!-- ══════════ 侧栏（桌面） ══════════ -->
@@ -110,7 +130,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="data.bundle.js"></script>
-<script src="app.js"></script>
+<script src="codes.js"></script>
+<script src="gate.js"></script>
 </body>
 </html>

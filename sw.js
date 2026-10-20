@@ -9,19 +9,22 @@
  * 通过局域网 IP（http://192.168.x.x）访问时浏览器会拒绝注册，属于正常现象，
  * 此时系统仍可正常使用，只是没有离线缓存。
  */
-const V = '20261020044831';
+const V = '20261020045909';
 const CACHE = 'sczc-' + V;
 const ASSETS = [
   './',
   './index.html',
   './app.css',
+  './codes.js',
+  './gate.js',
   './app.js',
-  './data.bundle.js',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
 ];
+// 注意：data.bundle.js 不预缓存——它在学习码验证通过后才被加载，
+// 由下面的 fetch 处理器做运行时缓存，这样未解锁的访客不会顺带把题库缓存下来。
 
 function put(req, res) {
   if (!res || res.status !== 200 || res.type !== 'basic') return res;

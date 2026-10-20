@@ -1317,8 +1317,11 @@ function bindSwipe() {
 
 function showMore() {
   const wc = wrongIds().length;
+  const lic = (window.__license && window.__license()) || null;
+  const licTxt = lic ? `学习码已激活 · ${new Date(lic.ts).toLocaleDateString('zh-CN')}` : '学习码：未激活';
   modal(`<h2 style="margin-bottom:4px">更多</h2>
     <p class="tiny muted" style="margin-bottom:14px">总掌握度 ${overallPct()}% · ${masteredCount()}/${KPS.length} 考点</p>
+    <div class="chip" style="margin-bottom:10px;${lic ? 'background:var(--green-soft);color:var(--green)' : 'background:var(--red-soft);color:var(--red)'}">${licTxt}</div>
     ${MORE_VIEWS.map((m) => `<div class="list-item" data-goto="${m.v}" style="border-radius:10px;border-bottom:1px solid var(--line-2)">
       <div class="li-main"><div class="t">${m.n}${m.v === 'wrong' && wc ? ` · ${wc} 道待清` : ''}</div><div class="s">${m.d}</div></div>
       <span class="muted">›</span>
@@ -1328,6 +1331,7 @@ function showMore() {
       <button class="btn sm" data-act="print-manual">🖨 导出速记手册</button>
       <button class="btn sm" data-act="theme">◐ 切换主题</button>
       <button class="btn sm danger" data-act="reset">↺ 重置记录</button>
+      ${lic ? '<button class="btn sm" data-act="deactivate">⏏ 停用本机</button>' : ''}
     </div>
     <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>关闭</button></div>`);
   $('#modalBox').onclick = (e) => {
@@ -1338,6 +1342,11 @@ function showMore() {
       const act = a.dataset.act;
       if (act === 'theme') { toggleTheme(); return; }
       if (act === 'reset') { closeModal(); doReset(); return; }
+      if (act === 'deactivate') {
+        if (!confirm('停用后需要重新输入学习码才能使用，确定？')) return;
+        try { localStorage.removeItem('sczc_license_v1'); } catch (e) {}
+        location.reload(); return;
+      }
       if (act === 'print-manual') { closeModal(); printManual(); return; }
     }
     if (e.target.closest('[data-close]')) closeModal();
@@ -1467,6 +1476,11 @@ function openMSearch() {
 
 /* ═══════════ 启动 ═══════════ */
 function boot() {
+  // 门禁未通过时不启动（gate.js 解锁后会动态加载本文件并再次触发）
+  if (window.__GATE && window.__GATE.locked) return;
+  if (boot._done) return;
+  boot._done = true;
+  window.__appStarted = true;
   load(); applyTheme();
   if (!DB.kps.length) {
     $('#boot').innerHTML = '<div class="boot-inner"><p>考点数据未加载。请先在项目根目录运行 <code>node tools/build.mjs</code>。</p></div>';
@@ -1540,6 +1554,7 @@ function boot() {
 
   go(state.view || 'dash');
 }
+window.__startApp = boot;
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();
