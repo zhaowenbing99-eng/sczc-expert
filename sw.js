@@ -9,7 +9,7 @@
  * 通过局域网 IP（http://192.168.x.x）访问时浏览器会拒绝注册，属于正常现象，
  * 此时系统仍可正常使用，只是没有离线缓存。
  */
-const V = '20261020043556';
+const V = '20261020044028';
 const CACHE = 'sczc-' + V;
 const ASSETS = [
   './',
@@ -32,9 +32,14 @@ function put(req, res) {
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE)
-      .then((c) => c.addAll(ASSETS).catch(() => {}))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then(async (c) => {
+      // 逐个用 cache:'reload' 抓取，避免把 HTTP 缓存里的旧版本钉进 SW 缓存
+      await Promise.all(ASSETS.map((url) =>
+        fetch(new Request(url, { cache: 'reload' }))
+          .then((res) => { if (res && res.status === 200 && res.type === 'basic') return c.put(url, res); })
+          .catch(() => {})
+      ));
+    }).then(() => self.skipWaiting())
   );
 });
 
