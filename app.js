@@ -1483,11 +1483,14 @@ function boot() {
   window.__appStarted = true;
   load(); applyTheme();
   if (!DB.kps.length) {
-    $('#boot').innerHTML = '<div class="boot-inner"><p>考点数据未加载。请先在项目根目录运行 <code>node tools/build.mjs</code>。</p></div>';
+    const bo = $('#boot');
+    if (bo) bo.innerHTML = '<div class="boot-inner"><p>考点数据未加载。请先在项目根目录运行 <code>node tools/build.mjs</code>。</p></div>';
     return;
   }
-  $('#app').hidden = false;
-  $('#boot').remove();
+  const appEl = $('#app');
+  if (appEl) appEl.hidden = false;
+  const bootEl = $('#boot');
+  if (bootEl) bootEl.remove();   // 门禁页可能已经移除过
 
   $('#nav').onclick = (e) => { const b = e.target.closest('.nav-item'); if (b) go(b.dataset.view); };
   $('#btnTheme').onclick = toggleTheme;
