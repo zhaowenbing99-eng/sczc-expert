@@ -58,7 +58,7 @@ const ui = {
   learnQueue: null, learnIdx: 0,
   flashQueue: null, flashIdx: 0, flashFlipped: false,
   quiz: null, exam: null,
-  filters: { chapter: 'all', onlyNew: false, onlyRed: false, onlyStar: false },
+  filters: { chapter: 'all', onlyNew: false, onlyRed: false, onlyStar: false, onlyOfficial: false },
   searchSel: 0,
 };
 
@@ -174,7 +174,7 @@ function renderDash() {
 
   return `<div class="wrap">
     <div class="hero">
-      <h1>把 374 页压成一张能带进考场的脑图</h1>
+      <h1>把 550 页培训资料压成一张能带进考场的脑图</h1>
       <p>全库已拆成 ${kpN} 个可独立作答的考点、${qN} 道题、${DB.numbers.length} 个数字点。红字＝教材原文必背关键词，蓝字＝配套重点句。先刷卡片建立框架，再用数字表和易混辨析补刀，最后两轮模拟考定分数。</p>
       <div class="hero-stats">
         <div class="hero-stat"><b>${mastered}<span style="font-size:14px;opacity:.6">/${kpN}</span></b><span>已掌握考点</span></div>
@@ -263,6 +263,7 @@ function buildLearnQueue() {
   if (f.onlyNew) list = list.filter((k) => progOf(k.id) !== 2);
   if (f.onlyRed) list = list.filter((k) => k.hl === 'R');
   if (f.onlyStar) list = list.filter((k) => state.star[k.id]);
+  if (f.onlyOfficial) list = list.filter((k) => (k.tags || []).includes('官方教材2026'));
   // 排序：未学优先 → 模糊 → 掌握；同组内按 star 降序、章节序
   const rank = (k) => (progOf(k.id) === 0 ? 0 : progOf(k.id) === 1 ? 1 : 2);
   const ci = (k) => chapOrder.indexOf(k.chapter);
@@ -294,6 +295,7 @@ function renderLearn() {
       <button class="chip chip-btn ${ui.filters.onlyNew ? 'on' : ''}" data-act="toggle-new">未掌握</button>
       <button class="chip chip-btn ${ui.filters.onlyRed ? 'on' : ''}" data-act="toggle-red">只看红字</button>
       <button class="chip chip-btn ${ui.filters.onlyStar ? 'on' : ''}" data-act="toggle-star">★ 收藏</button>
+      <button class="chip chip-btn ${ui.filters.onlyOfficial ? 'on' : ''}" data-act="toggle-official" title="只显示来自官方 2026 版培训资料的新增考点">官方2026</button>
       <div class="learn-progress"><div class="lp-track"><i style="width:${(ui.learnIdx + 1) / q.length * 100}%"></i></div><span>${ui.learnIdx + 1}/${q.length}</span></div>
     </div>
 
@@ -1017,7 +1019,8 @@ const ACT = {
   'toggle-new': () => { ui.filters.onlyNew = !ui.filters.onlyNew; ui.learnQueue = null; ui.learnIdx = 0; render(); },
   'toggle-red': () => { ui.filters.onlyRed = !ui.filters.onlyRed; ui.learnQueue = null; ui.learnIdx = 0; render(); },
   'toggle-star': () => { ui.filters.onlyStar = !ui.filters.onlyStar; ui.learnQueue = null; ui.learnIdx = 0; render(); },
-  'reset-filter': () => { ui.filters = { chapter: 'all', onlyNew: false, onlyRed: false, onlyStar: false }; ui.learnQueue = null; ui.learnIdx = 0; render(); },
+  'toggle-official': () => { ui.filters.onlyOfficial = !ui.filters.onlyOfficial; ui.learnQueue = null; ui.learnIdx = 0; render(); },
+  'reset-filter': () => { ui.filters = { chapter: 'all', onlyNew: false, onlyRed: false, onlyStar: false, onlyOfficial: false }; ui.learnQueue = null; ui.learnIdx = 0; render(); },
   'rate': (t) => { const k = curKP(); if (!k) return; const r = Number(t.dataset.r); state.prog[k.id] = r; save(); nextKP(); },
   'next-kp': () => nextKP(),
   'prev-kp': () => prevKP(),
@@ -1025,7 +1028,7 @@ const ACT = {
   'star-kp': () => { const k = curKP(); if (!k) return; state.star[k.id] = !state.star[k.id]; if (!state.star[k.id]) delete state.star[k.id]; save(); render(); },
   'jump-quiz': () => { const k = curKP(); if (!k) return; quizCfg.chapters = [k.chapter]; quizCfg.wrongOnly = false; ui.quiz = null; startQuiz(buildQuizPool(), '本章刷题'); },
   'open-kp': (t) => {
-    ui.filters.chapter = 'all'; ui.filters.onlyNew = false; ui.filters.onlyRed = false; ui.filters.onlyStar = false;
+    ui.filters.chapter = 'all'; ui.filters.onlyNew = false; ui.filters.onlyRed = false; ui.filters.onlyStar = false; ui.filters.onlyOfficial = false;
     ui.learnQueue = null; const q = buildLearnQueue();
     const raw = KP.get(t.dataset.id);
     const targetId = raw && raw.dup ? raw.dupOf : t.dataset.id;
