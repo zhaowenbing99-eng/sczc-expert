@@ -31,7 +31,7 @@ const chName = (id) => (CH.get(id) || {}).name || id;
 
 /* ═══════════ 状态 ═══════════ */
 const LS = 'sczc_expert_v1';
-const DEF = { view: 'dash', theme: 'light', prog: {}, wrong: {}, star: {}, exams: [], seen: {} };
+const DEF = { view: 'dash', theme: 'light', prog: {}, wrong: {}, star: {}, exams: [], seen: {}, qstat: {} };
 let state = Object.assign({}, DEF);
 
 function load() {
@@ -44,6 +44,7 @@ function load() {
   state.star = state.star || {};
   state.exams = state.exams || [];
   state.seen = state.seen || {};
+  state.qstat = state.qstat || {};
 }
 let saveTimer = null;
 function save() {
@@ -68,6 +69,13 @@ const masteredCount = () => KPS.filter((k) => progOf(k.id) === 2).length;
 const touchedCount = () => KPS.filter((k) => progOf(k.id) > 0).length;
 const overallPct = () => KPS.length ? Math.round(masteredCount() / KPS.length * 100) : 0;
 const wrongIds = () => Object.keys(state.wrong).filter((id) => Q.has(id));
+
+function chapQProgress(id) {
+  const qs = (byChap.get(id) || {}).qs || [];
+  let done = 0, mas = 0;
+  for (const q of qs) { if (state.qstat[q.id]) done++; if (qMastered(q.id)) mas++; }
+  return { total: qs.length, done, mastered: mas, pct: qs.length ? Math.round(mas / qs.length * 100) : 0 };
+}
 
 function chapStat(id) {
   const list = (byChap.get(id) || { kps: [] }).kps;
@@ -212,11 +220,15 @@ function renderDash() {
     <div class="chapter-matrix">
       ${DB.chapters.map((c) => {
         const s = chapStat(c.id);
+        const q = chapQProgress(c.id);
+        const pct = s.total > 0 ? s.pct : q.pct;
+        const left = s.total > 0 ? `${s.mastered}/${s.total} 掌握` : `${q.mastered}/${q.total} 已掌握`;
+        const right = s.total > 0 ? `${q.total} 题` : `已练 ${q.done} 题`;
         return `<div class="card chap-card" data-chapter="${c.id}" style="--cc:${c.color}">
           <div class="cn">${esc(c.name)}<span class="cid">${c.id}</span></div>
           <div class="cdesc">${esc(c.desc || '')}</div>
-          <div class="cbar"><i style="width:${s.pct}%"></i></div>
-          <div class="cmeta"><span>${s.mastered}/${s.total} 掌握</span><span>${(byChap.get(c.id) || {}).qs?.length || 0} 题</span></div>
+          <div class="cbar"><i style="width:${pct}%"></i></div>
+          <div class="cmeta"><span>${left}</span><span>${right}</span></div>
         </div>`;
       }).join('')}
     </div>
@@ -289,7 +301,7 @@ function renderLearn() {
     <div class="learn-bar">
       <div class="row wrap" style="gap:6px">
         <button class="chip chip-btn ${ui.filters.chapter === 'all' ? 'on' : ''}" data-act="filter-ch" data-ch="all">全部章节</button>
-        ${DB.chapters.map((c2) => `<button class="chip chip-btn ${ui.filters.chapter === c2.id ? 'on' : ''}" data-act="filter-ch" data-ch="${c2.id}">${esc(c2.short || c2.name)}</button>`).join('')}
+        ${DB.chapters.filter((c2) => !c2.qonly).map((c2) => `<button class="chip chip-btn ${ui.filters.chapter === c2.id ? 'on' : ''}" data-act="filter-ch" data-ch="${c2.id}">${esc(c2.short || c2.name)}</button>`).join('')}
       </div>
       <div class="spacer"></div>
       <button class="chip chip-btn ${ui.filters.onlyNew ? 'on' : ''}" data-act="toggle-new">未掌握</button>
@@ -533,6 +545,18 @@ function renderQuizSetup() {
         <button class="chip chip-btn ${quizCfg.shuffle ? 'on' : ''}" data-act="quiz-shuffle-on">乱序 ${quizCfg.shuffle ? '✓' : '✗'}</button>
       </div>
 
+      <div class="section-head" style="margin:22px 0 10px"><h2 style="font-size:13px;color:var(--ink-3)">快速开始</h2></div>
+      <div class="row wrap" style="gap:7px">
+        <button class="chip chip-btn" data-act="quiz-preset" data-p="bank">多选专项题库 · 190 题</button>
+        <button class="chip chip-btn" data-act="quiz-preset" data-p="bankun">题库里还没掌握的</button>
+        <button class="chip chip-btn" data-act="quiz-preset" data-p="allmulti">全部多选 · ${DB.questions.filter(q=>q.type==='multi').length} 题</button>
+        <button class="chip chip-btn" data-act="quiz-preset" data-p="wrong">错题本 · ${wrongN} 题</button>
+      </div>
+      <div class="row wrap" style="gap:7px;margin-top:8px">
+        <button class="chip chip-btn ${quizCfg.onlyUnmastered ? 'on' : ''}" data-act="quiz-unmastered" title="只出还没有答对过的题">只练没掌握的</button>
+        <span class="tiny muted">题库 ${DB.questions.length} 题，其中还没掌握 <b>${DB.questions.filter((q) => !qMastered(q.id)).length}</b> 题</span>
+      </div>
+
       <div class="row" style="margin-top:26px;gap:14px">
         <button class="btn primary lg" data-act="quiz-start" ${poolN ? '' : 'disabled'}>开始刷题</button>
         <span class="tiny muted">按当前条件将出 <b>${poolN}</b> 题</span>
@@ -549,11 +573,12 @@ function renderLawsTeaser() {
   </div>`;
 }
 
-let quizCfg = { chapters: ['all'], types: ['single', 'multi', 'judge'], n: 10, wrongOnly: false, shuffle: true };
+let quizCfg = { chapters: ['all'], types: ['single', 'multi', 'judge'], n: 10, wrongOnly: false, shuffle: true, onlyUnmastered: false };
 
 function buildQuizPool() {
   let pool = DB.questions.slice();
   if (quizCfg.wrongOnly) { const w = new Set(wrongIds()); pool = pool.filter((q) => w.has(q.id)); }
+  if (quizCfg.onlyUnmastered) pool = pool.filter((q) => !qMastered(q.id));
   if (!quizCfg.chapters.includes('all')) { const s = new Set(quizCfg.chapters); pool = pool.filter((q) => s.has(q.chapter)); }
   const ts = new Set(quizCfg.types); pool = pool.filter((q) => ts.has(q.type));
   if (quizCfg.shuffle) pool = shuffle(pool);
@@ -618,6 +643,16 @@ function renderQuizRun() {
       </div>
     </div>
   </div>`;
+}
+const qStat = (id) => state.qstat[id] || null;
+/** 掌握判定：至少答对一次，且最近一次答对 */
+function qMastered(id) { const s = state.qstat[id]; return !!(s && s.ok >= 1 && s.last === 1); }
+function recordAnswer(q, ok) {
+  const s = state.qstat[q.id] || { ok: 0, bad: 0 };
+  if (ok) s.ok++; else s.bad++;
+  s.last = ok ? 1 : 0; s.ts = Date.now();
+  state.qstat[q.id] = s;
+  save();
 }
 function sameSet(a, b) { if (!a || !b || a.length !== b.length) return false; const x = a.slice().sort(), y = b.slice().sort(); return x.every((v, i) => v === y[i]); }
 
@@ -714,7 +749,7 @@ function buildExamPaper() {
   const paper = [];
   const perChapter = {};
   const pick = (type, n, score) => {
-    let pool = DB.questions.filter((q) => q.type === type);
+    let pool = DB.questions.filter((q) => q.type === type && q.chapter !== 'C14');
     // 尽量跨章节均衡：轮转抽取
     const byC = new Map();
     pool.forEach((q) => { if (!byC.has(q.chapter)) byC.set(q.chapter, []); byC.get(q.chapter).push(q); });
@@ -820,6 +855,7 @@ function submitExam() {
     if (it.q.type === 'case') return;
     const ok = sameSet(it.ans, it.q.answer);
     it.ok = ok;
+    recordAnswer(it.q, ok);
     if (ok) { it.got = it.score; totalScore += it.score; correct++; }
     else if (!ok) {
       // 记入错题本
@@ -993,7 +1029,17 @@ function bindView() {
     const ch = e.target.closest('[data-chapter]');
     const ni = e.target.closest('.nav-item');
     if (ni) { go(ni.dataset.view); return; }
-    if (ch) { ui.filters.chapter = ch.dataset.chapter; ui.learnQueue = null; ui.learnIdx = 0; go('learn'); return; }
+    if (ch) {
+      const cid = ch.dataset.chapter;
+      const c = CH.get(cid);
+      const hasKP = ((byChap.get(cid) || {}).kps || []).length > 0;
+      if (c && (c.qonly || !hasKP)) {
+        quizCfg.chapters = [cid]; quizCfg.types = ['multi']; quizCfg.n = 0;
+        quizCfg.wrongOnly = false; quizCfg.onlyUnmastered = false;
+        ui.quiz = null; ui.quizPreset = cid; go('quiz'); return;
+      }
+      ui.filters.chapter = cid; ui.learnQueue = null; ui.learnIdx = 0; go('learn'); return;
+    }
     if (!t) return;
     const act = t.dataset.act;
     const R = ACT[act];
@@ -1070,6 +1116,16 @@ const ACT = {
   },
   'quiz-n': (t) => { quizCfg.n = Number(t.dataset.n); render(); },
   'quiz-wrong': () => { quizCfg.wrongOnly = !quizCfg.wrongOnly; render(); },
+  'quiz-unmastered': () => { quizCfg.onlyUnmastered = !quizCfg.onlyUnmastered; render(); },
+  'quiz-preset': (t) => {
+    const p = t.dataset.p;
+    if (p === 'bank') { quizCfg.chapters = ['C14']; quizCfg.types = ['multi']; quizCfg.n = 0; quizCfg.wrongOnly = false; quizCfg.onlyUnmastered = false; }
+    if (p === 'bankun') { quizCfg.chapters = ['C14']; quizCfg.types = ['multi']; quizCfg.n = 0; quizCfg.wrongOnly = false; quizCfg.onlyUnmastered = true; }
+    if (p === 'allmulti') { quizCfg.chapters = ['all']; quizCfg.types = ['multi']; quizCfg.n = 0; quizCfg.wrongOnly = false; quizCfg.onlyUnmastered = false; }
+    if (p === 'wrong') { quizCfg.chapters = ['all']; quizCfg.types = ['single', 'multi', 'judge']; quizCfg.n = 0; quizCfg.wrongOnly = true; quizCfg.onlyUnmastered = false; }
+    quizCfg.shuffle = true;
+    render();
+  },
   'quiz-shuffle-on': () => { quizCfg.shuffle = !quizCfg.shuffle; render(); },
   'quiz-start': () => startQuiz(buildQuizPool(), '自由刷题'),
   'pick': (t) => pickOption(Number(t.dataset.i)),
@@ -1139,6 +1195,7 @@ function judgeCurrent(auto) {
   if (!sel || !sel.length) { if (!auto) toast('先选一个答案'); return; }
   s.judged[s.i] = true;
   const ok = sameSet(sel, q.answer);
+  recordAnswer(q, ok);
   if (ok) s.right++;
   else { state.wrong[q.id] = { n: (state.wrong[q.id]?.n || 0) + 1, ts: Date.now() }; save(); }
   render();
