@@ -64,10 +64,11 @@ const ui = {
 };
 
 /* ═══════════ 进度统计 ═══════════ */
-const progOf = (id) => state.prog[id] || 0;          // 0 未学 1 模糊 2 掌握
+const progOf = (id) => (id in state.prog ? state.prog[id] : -1);   // -1 未评 0 不会 1 模糊 2 掌握
 const masteredCount = () => KPS.filter((k) => progOf(k.id) === 2).length;
-const touchedCount = () => KPS.filter((k) => progOf(k.id) > 0).length;
-const overallPct = () => KPS.length ? Math.round(masteredCount() / KPS.length * 100) : 0;
+const touchedCount = () => KPS.filter((k) => progOf(k.id) >= 0).length;
+const overallPct = () => (KPS.length ? masteredCount() / KPS.length * 100 : 0);
+const fmtPct = (v) => (v > 0 && v < 10 ? v.toFixed(1) : String(Math.round(v)));
 const wrongIds = () => Object.keys(state.wrong).filter((id) => Q.has(id));
 
 function chapQProgress(id) {
@@ -80,7 +81,7 @@ function chapQProgress(id) {
 function chapStat(id) {
   const list = (byChap.get(id) || { kps: [] }).kps;
   const m = list.filter((k) => progOf(k.id) === 2).length;
-  const t = list.filter((k) => progOf(k.id) > 0).length;
+  const t = list.filter((k) => progOf(k.id) >= 0).length;
   return { total: list.length, mastered: m, touched: t, pct: list.length ? Math.round(m / list.length * 100) : 0 };
 }
 
@@ -161,8 +162,8 @@ function syncTabbar(view) {
 
 function syncRail() {
   const pct = overallPct();
-  const mr = $('#mRatio'); if (mr) mr.textContent = pct + '%';
-  $('#railPct').textContent = pct + '%';
+  const mr = $('#mRatio'); if (mr) mr.textContent = fmtPct(pct) + '%';
+  $('#railPct').textContent = fmtPct(pct) + '%';
   $('#railBar').style.width = pct + '%';
   $('#railSub').textContent = `${masteredCount()} / ${KPS.length} 考点已掌握`;
   const wc = wrongIds().length;
@@ -186,7 +187,7 @@ function renderDash() {
       <p>全库已拆成 ${kpN} 个可独立作答的考点、${qN} 道题、${DB.numbers.length} 个数字点。红字＝教材原文必背关键词，蓝字＝配套重点句。先刷卡片建立框架，再用数字表和易混辨析补刀，最后两轮模拟考定分数。</p>
       <div class="hero-stats">
         <div class="hero-stat"><b>${mastered}<span style="font-size:14px;opacity:.6">/${kpN}</span></b><span>已掌握考点</span></div>
-        <div class="hero-stat"><b>${pct}%</b><span>总掌握度</span></div>
+        <div class="hero-stat"><b>${fmtPct(pct)}%</b><span>总掌握度</span></div>
         <div class="hero-stat"><b>${qN}</b><span>题库总量</span></div>
         <div class="hero-stat"><b>${last ? last.score : '—'}</b><span>最近模考得分</span></div>
       </div>
@@ -277,14 +278,28 @@ function buildLearnQueue() {
   if (f.onlyStar) list = list.filter((k) => state.star[k.id]);
   if (f.onlyOfficial) list = list.filter((k) => (k.tags || []).includes('官方教材2026'));
   // 排序：未学优先 → 模糊 → 掌握；同组内按 star 降序、章节序
-  const rank = (k) => (progOf(k.id) === 0 ? 0 : progOf(k.id) === 1 ? 1 : 2);
+  const rank = (k) => { const p = progOf(k.id); return p < 0 ? 0 : p === 0 ? 1 : p === 1 ? 2 : 3; };
   const ci = (k) => chapOrder.indexOf(k.chapter);
   list.sort((a, b) => rank(a) - rank(b) || (b.star - a.star) || (ci(a) - ci(b)));
   return list;
 }
 
 function renderLearn() {
-  if (!ui.learnQueue) ui.learnQueue = buildLearnQueue();
+  if (!ui.learnQueue) {
+    ui.learnQueue = buildLearnQueue();
+    // 首次进入：接着上次评的那张
+    if (!ui._resumed && ui.learnQueue.length) {
+      ui._resumed = true;
+      const f = ui.filters;
+      const pristine = f.chapter === 'all' && !f.onlyNew && !f.onlyRed && !f.onlyStar && !f.onlyOfficial;
+      if (pristine) {
+        const firstNew = ui.learnQueue.findIndex((k) => progOf(k.id) < 0);
+        const lastIdx = state.lastKpId ? ui.learnQueue.findIndex((k) => k.id === state.lastKpId) : -1;
+        if (firstNew >= 0) ui.learnIdx = firstNew;
+        else if (lastIdx >= 0) ui.learnIdx = lastIdx;
+      }
+    }
+  }
   const q = ui.learnQueue;
   if (!q.length) {
     return `<div class="wrap"><div class="empty"><div class="ico">✓</div>
@@ -308,13 +323,14 @@ function renderLearn() {
       <button class="chip chip-btn ${ui.filters.onlyRed ? 'on' : ''}" data-act="toggle-red">只看红字</button>
       <button class="chip chip-btn ${ui.filters.onlyStar ? 'on' : ''}" data-act="toggle-star">★ 收藏</button>
       <button class="chip chip-btn ${ui.filters.onlyOfficial ? 'on' : ''}" data-act="toggle-official" title="只显示来自官方 2026 版培训资料的新增考点">官方2026</button>
-      <div class="learn-progress"><div class="lp-track"><i style="width:${(ui.learnIdx + 1) / q.length * 100}%"></i></div><span>${ui.learnIdx + 1}/${q.length}</span></div>
+      <div class="learn-progress"><div class="lp-track"><i style="width:${touchedCount() / Math.max(1, KPS.length) * 100}%"></i></div><span>已评 ${touchedCount()}/${KPS.length}</span></div>
     </div>
 
     <div class="card kp-card" style="--cc:${c.color}">
       <div class="kp-top">
         <span class="chip solid" style="background:${c.color}">${esc(c.name)}</span>
         ${hlBadge(k.hl)}
+        ${p >= 0 ? `<span class="chip on" title="上次的评分">上次：${['不会', '模糊', '掌握'][p]}</span>` : '<span class="chip" title="还没评过">未评</span>'}
         <span class="chip dot" title="重要度">${starStr(k.star)}</span>
         ${(k.tags || []).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}
         <div class="spacer"></div>
@@ -369,7 +385,7 @@ function buildFlashQueue() {
   let list = KPS.filter((k) => progOf(k.id) !== 2 || k.star >= 5);
   if (ui.filters.chapter !== 'all') list = list.filter((k) => k.chapter === ui.filters.chapter);
   // 加权：未学/模糊优先，红字优先，重要度高的优先
-  const w = (k) => (progOf(k.id) === 0 ? 3 : progOf(k.id) === 1 ? 2 : 0) + (k.hl === 'R' ? 1.5 : 0) + k.star * 0.3;
+  const w = (k) => { const p = progOf(k.id); return (p <= 0 ? 3 : p === 1 ? 2 : 0) + (k.hl === 'R' ? 1.5 : 0) + k.star * 0.3; };
   return list.sort((a, b) => w(b) - w(a));
 }
 
@@ -1004,6 +1020,7 @@ function renderLaws() {
         ${kps.map((k) => `<div class="list-item" data-act="open-kp" data-id="${k.id}">
           <div class="li-main"><div class="t">${esc(k.topic)}</div><div class="s">${esc(k.cite)}</div></div>
           ${hlBadge(k.hl)}
+        ${p >= 0 ? `<span class="chip on" title="上次的评分">上次：${['不会', '模糊', '掌握'][p]}</span>` : '<span class="chip" title="还没评过">未评</span>'}
         </div>`).join('')}
       </div>` : ''}
 
@@ -1067,7 +1084,20 @@ const ACT = {
   'toggle-star': () => { ui.filters.onlyStar = !ui.filters.onlyStar; ui.learnQueue = null; ui.learnIdx = 0; render(); },
   'toggle-official': () => { ui.filters.onlyOfficial = !ui.filters.onlyOfficial; ui.learnQueue = null; ui.learnIdx = 0; render(); },
   'reset-filter': () => { ui.filters = { chapter: 'all', onlyNew: false, onlyRed: false, onlyStar: false, onlyOfficial: false }; ui.learnQueue = null; ui.learnIdx = 0; render(); },
-  'rate': (t) => { const k = curKP(); if (!k) return; const r = Number(t.dataset.r); state.prog[k.id] = r; save(); nextKP(); },
+  'rate': (t) => {
+    const k = curKP(); if (!k) return;
+    const r = Number(t.dataset.r);
+    state.prog[k.id] = r;
+    state.lastKpId = k.id;
+    // 今日计数
+    const today = new Date().toISOString().slice(0, 10);
+    if (!state.daily || state.daily.date !== today) state.daily = { date: today, rated: 0 };
+    state.daily.rated = (state.daily.rated || 0) + 1;
+    save();
+    ui.sessionRated = (ui.sessionRated || 0) + 1;
+    toast(`已标记「${['不会', '模糊', '掌握'][r]}」· 本次已评 ${ui.sessionRated} 张 · 今日 ${state.daily.rated} 张`);
+    nextKP();
+  },
   'next-kp': () => nextKP(),
   'prev-kp': () => prevKP(),
   'random-kp': () => { const q = ui.learnQueue || buildLearnQueue(); if (q.length) { ui.learnIdx = Math.floor(Math.random() * q.length); render(); } },
@@ -1377,8 +1407,24 @@ function showMore() {
   const lic = (window.__license && window.__license()) || null;
   const licTxt = lic ? `学习码已激活 · ${new Date(lic.ts).toLocaleDateString('zh-CN')}` : '学习码：未激活';
   modal(`<h2 style="margin-bottom:4px">更多</h2>
-    <p class="tiny muted" style="margin-bottom:14px">总掌握度 ${overallPct()}% · ${masteredCount()}/${KPS.length} 考点</p>
+    <p class="tiny muted" style="margin-bottom:14px">总掌握度 ${fmtPct(overallPct())}% · ${masteredCount()}/${KPS.length} 考点</p>
     <div class="chip" style="margin-bottom:10px;${lic ? 'background:var(--green-soft);color:var(--green)' : 'background:var(--red-soft);color:var(--red)'}">${licTxt}</div>
+    <div class="card" style="padding:12px 14px;margin-bottom:12px;background:var(--panel-2);box-shadow:none">
+      <div class="tiny muted" style="margin-bottom:6px">本机学习记录</div>
+      <div class="row wrap" style="gap:14px;font-size:12.5px">
+        <span>已掌握 <b>${masteredCount()}</b> / ${KPS.length}</span>
+        <span>已评过 <b>${touchedCount()}</b></span>
+        <span>今日已评 <b>${(state.daily && state.daily.date === new Date().toISOString().slice(0, 10)) ? state.daily.rated : 0}</b></span>
+        <span>题目已练 <b>${Object.keys(state.qstat || {}).length}</b></span>
+        <span>错题 <b>${wrongIds().length}</b></span>
+        <span>模考 <b>${state.exams.length}</b> 次</span>
+      </div>
+      <div class="row wrap" style="gap:8px;margin-top:10px">
+        <button class="btn sm" data-act="export-progress">⬇ 导出进度</button>
+        <button class="btn sm" data-act="import-progress">⬆ 导入进度</button>
+      </div>
+      <div class="tiny muted" style="margin-top:8px;line-height:1.6">进度只存在这台设备的浏览器里，换手机/清缓存会丢；导出备份可换设备恢复。</div>
+    </div>
     ${MORE_VIEWS.map((m) => `<div class="list-item" data-goto="${m.v}" style="border-radius:10px;border-bottom:1px solid var(--line-2)">
       <div class="li-main"><div class="t">${m.n}${m.v === 'wrong' && wc ? ` · ${wc} 道待清` : ''}</div><div class="s">${m.d}</div></div>
       <span class="muted">›</span>
@@ -1405,9 +1451,56 @@ function showMore() {
         location.reload(); return;
       }
       if (act === 'print-manual') { closeModal(); printManual(); return; }
+      if (act === 'export-progress') { exportProgress(); return; }
+      if (act === 'import-progress') { importProgress(); return; }
     }
     if (e.target.closest('[data-close]')) closeModal();
   };
+}
+
+function exportProgress() {
+  const data = {
+    v: 2, exportedAt: new Date().toISOString(),
+    prog: state.prog, qstat: state.qstat, wrong: state.wrong, star: state.star,
+    exams: state.exams, daily: state.daily, lastKpId: state.lastKpId,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `评审冲刺-学习进度-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('已导出进度文件');
+}
+
+function importProgress() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'application/json,.json';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const d = JSON.parse(String(r.result));
+        if (!d || typeof d !== 'object' || !d.prog) throw new Error('格式不对');
+        const n = Object.keys(d.prog).length;
+        if (!confirm(`将导入 ${n} 条考点记录，并覆盖本机的学习进度。继续？`)) return;
+        state.prog = d.prog || {};
+        state.qstat = d.qstat || {};
+        state.wrong = d.wrong || {};
+        state.star = d.star || {};
+        state.exams = d.exams || [];
+        state.daily = d.daily || null;
+        state.lastKpId = d.lastKpId || null;
+        save();
+        closeModal();
+        go('dash');
+        toast(`已导入：${n} 条考点记录、${Object.keys(state.qstat).length} 条做题记录`);
+      } catch (e) { toast('导入失败：不是本系统导出的进度文件'); }
+    };
+    r.readAsText(f);
+  };
+  inp.click();
 }
 
 function doReset() {
