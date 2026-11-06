@@ -547,7 +547,7 @@ function renderQuizSetup() {
 
       <div class="section-head" style="margin:22px 0 10px"><h2 style="font-size:13px;color:var(--ink-3)">快速开始</h2></div>
       <div class="row wrap" style="gap:7px">
-        <button class="chip chip-btn" data-act="quiz-preset" data-p="bank">多选专项题库 · 190 题</button>
+        <button class="chip chip-btn" data-act="quiz-preset" data-p="bank">多选专项题库 · ${DB.questions.filter((q) => q.chapter === 'C14').length} 题</button>
         <button class="chip chip-btn" data-act="quiz-preset" data-p="bankun">题库里还没掌握的</button>
         <button class="chip chip-btn" data-act="quiz-preset" data-p="allmulti">全部多选 · ${DB.questions.filter(q=>q.type==='multi').length} 题</button>
         <button class="chip chip-btn" data-act="quiz-preset" data-p="wrong">错题本 · ${wrongN} 题</button>
