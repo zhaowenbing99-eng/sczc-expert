@@ -30,11 +30,23 @@ const chColor = (id) => (CH.get(id) || {}).color || 'var(--accent)';
 const chName = (id) => (CH.get(id) || {}).name || id;
 
 /* ═══════════ 状态 ═══════════ */
-const LS = 'sczc_expert_v1';
+const LIC = (typeof window.__license === 'function' && window.__license()) || null;
+const LS_BASE = 'sczc_expert_v1';
+// 每个学习码一份独立进度：同一台设备换人用码不会串账
+const LS = LIC ? `${LS_BASE}::${String(LIC.h).slice(0, 8)}` : LS_BASE;
 const DEF = { view: 'dash', theme: 'light', prog: {}, wrong: {}, star: {}, exams: [], seen: {}, qstat: {} };
 let state = Object.assign({}, DEF);
 
 function load() {
+  // 旧版本只用一个公共键：首次按码分账时把它搬到当前码名下（只搬一次）
+  try {
+    const MK = 'sczc_expert_migrated_v1';
+    const legacy = localStorage.getItem(LS_BASE);
+    if (LIC && legacy && !localStorage.getItem(LS) && !localStorage.getItem(MK)) {
+      localStorage.setItem(LS, legacy);
+      localStorage.setItem(MK, '1');
+    }
+  } catch (e) { /* 忽略 */ }
   try {
     const raw = localStorage.getItem(LS);
     if (raw) state = Object.assign({}, DEF, JSON.parse(raw));
@@ -1405,7 +1417,7 @@ function bindSwipe() {
 function showMore() {
   const wc = wrongIds().length;
   const lic = (window.__license && window.__license()) || null;
-  const licTxt = lic ? `学习码已激活 · ${new Date(lic.ts).toLocaleDateString('zh-CN')}` : '学习码：未激活';
+  const licTxt = lic ? `学习码 ${lic.t ? '…' + lic.t : ''}已激活 · ${new Date(lic.ts).toLocaleDateString('zh-CN')} · 本机独立进度` : '学习码：未激活';
   modal(`<h2 style="margin-bottom:4px">更多</h2>
     <p class="tiny muted" style="margin-bottom:14px">总掌握度 ${fmtPct(overallPct())}% · ${masteredCount()}/${KPS.length} 考点</p>
     <div class="chip" style="margin-bottom:10px;${lic ? 'background:var(--green-soft);color:var(--green)' : 'background:var(--red-soft);color:var(--red)'}">${licTxt}</div>

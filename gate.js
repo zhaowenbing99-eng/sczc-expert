@@ -79,7 +79,7 @@
     if (!h) { setBusy(false); return fail('当前环境不支持校验，请用浏览器打开线上网址'); }
 
     if (HASHES.has(h)) {
-      try { localStorage.setItem(LS, JSON.stringify({ h, ts: Date.now(), v: 1 })); } catch (e) {}
+      try { localStorage.setItem(LS, JSON.stringify({ h, ts: Date.now(), v: 1, t: code.slice(-4) })); } catch (e) {}
       fail('');
       await enterApp();
     } else {
