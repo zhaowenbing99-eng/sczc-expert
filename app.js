@@ -365,7 +365,7 @@ function renderLearn() {
 
       ${k.mnemonic ? `<div class="mnemo">🧠 <b>口诀</b>　${esc(k.mnemonic)}</div>` : ''}
       ${k.trap ? `<div class="trap-box">⚠ ${emph(k.trap)}</div>` : ''}
-      <div class="cite">📖 ${esc(k.cite)}</div>
+      <div class="cite">📖 ${esc(k.cite)} ${citeBtn(k.cite)}</div>
 
       <div class="rate-bar">
         <button class="rate-btn ${p === 0 ? 'on' : ''}" data-act="rate" data-r="0">不会 <kbd>1</kbd></button>
@@ -1083,6 +1083,61 @@ function hiliteAll(raw, kw) {
   return out + esc(raw.slice(from));
 }
 
+let lawArtPending = null;
+function ensureLawArt() {
+  if (window.__LAWART) return Promise.resolve(window.__LAWART);
+  if (lawArtPending) return lawArtPending;
+  lawArtPending = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'src/lawar.js';
+    sc.onload = () => (window.__LAWART ? res(window.__LAWART) : rej(new Error('empty')));
+    sc.onerror = () => rej(new Error('load'));
+    document.body.appendChild(sc);
+  });
+  return lawArtPending;
+}
+function parseCite(cite) {
+  const m = /《([^》]{2,40})》\s*第([一二三四五六七八九十百零]+)条/.exec(cite || '');
+  return m ? { law: m[1], art: m[2] } : null;
+}
+function lawArtRecord(law, art) {
+  const L = window.__LAWART;
+  if (!L || !L.arts) return null;
+  const key = String(law).replace(/[《》]/g, '').replace('中华人民共和国', '');
+  let full = L.arts[key] ? key : null;
+  if (!full && L.aliases && L.aliases[key] && L.arts[L.aliases[key]]) full = L.aliases[key];
+  if (!full) for (const n of Object.keys(L.arts)) { if (n.includes(key) || key.includes(n)) { full = n; break; } }
+  return full ? { law: full, art, rec: L.arts[full][art] || null } : null;
+}
+function citeBtn(cite) {
+  const pc = parseCite(cite);
+  if (!pc) return '';
+  const r = lawArtRecord(pc.law, pc.art);
+  if (!r || !r.rec) return '';
+  return `<button class="btn sm ghost" style="margin-left:6px;padding:2px 8px;font-size:11.5px" data-act="law-art" data-law="${esc(pc.law)}" data-art="${esc(pc.art)}" data-back="">看第${esc(pc.art)}条</button>`;
+}
+
+function openLawArt(law, art, backName) {
+  ensureLawArt().then(() => {
+    const r = lawArtRecord(law, art);
+    const rec = r && r.rec;
+    const body = rec
+      ? `<div class="src-body" style="max-height:46vh;margin-top:6px">${esc(rec.t)}</div>`
+      : `<p class="muted tiny">原文素材里没收录这一条，可以点下面的按钮去原文页里找。</p>`;
+    modal(`<h2 style="font-size:17px">${esc(law)} 第${esc(art)}条</h2>
+      <div class="row wrap" style="gap:7px;margin:4px 0 12px">
+        <span class="chip on">法条正文</span>${rec ? `<span class="chip">${esc(rec.d)} 第 ${rec.p} 页</span>` : ''}
+      </div>
+      ${body}
+      <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
+        ${rec ? `<button class="btn sm" data-act="src-goto" data-doc="${rec.d}" data-page="${rec.p}" data-q="">📄 到原文这一页</button>` : ''}
+        ${backName ? `<button class="btn sm" data-act="law-back" data-name="${esc(backName)}">← 返回法规</button>` : ''}
+        <button class="btn" data-close>关闭</button>
+      </div>`);
+    const c = $('#modalBox [data-close]'); if (c) c.onclick = closeModal;
+  }).catch(() => toast('法条数据加载失败'));
+}
+
 function jumpToSource(id, kw) {
   const m = (DB.srcmap || {})[id];
   if (!m) { toast('这条内容没关联到原文'); return; }
@@ -1119,6 +1174,25 @@ function renderSources() {
   </div>`;
 }
 
+function srcToc(doc, cur) {
+  const total = doc.pages.length;
+  const span = 24;
+  let from = Math.max(1, cur - span);
+  let to = Math.min(total, from + span * 2);
+  from = Math.max(1, to - span * 2);
+  const btn = (n) => `<button class="chip chip-btn ${n === cur ? 'on' : ''}" data-act="src-page" data-page="${n}">${n}</button>`;
+  const nums = [];
+  for (let i = from; i <= to; i++) nums.push(btn(i));
+  return `<details class="src-toc" style="margin-top:10px">
+    <summary class="tiny muted" style="cursor:pointer">目录 · 共 ${total} 页（点开按页跳）</summary>
+    <div class="row wrap" style="gap:6px;margin-top:8px;max-height:180px;overflow:auto">
+      ${from > 1 ? `<button class="chip chip-btn" data-act="src-page" data-page="1">1</button><span class="tiny muted">…</span>` : ''}
+      ${nums.join('')}
+      ${to < total ? `<span class="tiny muted">…</span><button class="chip chip-btn" data-act="src-page" data-page="${total}">${total}</button>` : ''}
+    </div>
+  </details>`;
+}
+
 function renderSrcReader(doc) {
   const total = doc.pages.length;
   const cur = Math.min(Math.max(1, ui.src.page || 1), total);
@@ -1135,6 +1209,7 @@ function renderSrcReader(doc) {
       </div>
     </div>
     ${ui.src.q ? `<div class="tiny muted" style="margin-top:8px">高亮：<b>${esc(ui.src.q)}</b> · <a href="#" data-act="src-clear-q" style="color:var(--blue)">清除</a></div>` : ''}
+    ${srcToc(doc, cur)}
     <div class="src-body">${hiliteAll(pg.t || '（本页无可识别文字）', ui.src.q)}</div>
     <div class="row" style="justify-content:center;margin-top:18px;gap:8px">${nav()}</div>
   </div>`;
@@ -1328,6 +1403,7 @@ const ACT = {
   },
   'exam-start-renew': (t) => startExam(true, { format: 'renew', setIdx: Number(t.dataset.set) }),
   'src-doc': (t) => { ui.src = { doc: t.dataset.id, page: 1, q: '' }; render(); },
+  'src-page': (t) => { ui.src.page = Number(t.dataset.page) || 1; render(); $('#view').scrollTop = 0; },
   'src-prev': () => { ui.src.page = Math.max(1, (ui.src.page || 1) - 1); render(); },
   'src-next': () => { ui.src.page = (ui.src.page || 1) + 1; render(); },
   'src-jump': () => {
@@ -1350,6 +1426,9 @@ const ACT = {
 
   /* 法规 */
   'law-detail': (t) => showLaw(t.dataset.name),
+  'law-art': (t) => openLawArt(t.dataset.law, t.dataset.art, t.dataset.back || ''),
+  'law-back': (t) => showLaw(t.dataset.name),
+  'src-goto': (t) => { const m = [t.dataset.doc, Number(t.dataset.page)]; ui.src = { doc: m[0], page: m[1], q: t.dataset.q || '' }; closeModal(); go('sources'); },
 };
 
 function refreshQuizSetup() {
@@ -1426,21 +1505,39 @@ function showQuestion(q, userAns) {
 function showLaw(name) {
   const l = DB.laws.find((x) => x.name === name);
   if (!l) return;
-  const kps = DB.kps.filter((k) => (k.cite || '').includes(l.short || l.name.slice(0, 6)));
+  ensureLawArt().finally(() => renderLawModal(name));
+}
+function renderLawModal(name) {
+  const l = DB.laws.find((x) => x.name === name);
+  if (!l) return;
+  const key = (l.short || l.name).replace('中华人民共和国', '');
+  const kps = DB.kps.filter((k) => (k.cite || '').includes(key) || (k.cite || '').includes(l.name.slice(0, 6)));
+  const cntArt = Object.keys((window.__LAWART && window.__LAWART.arts && window.__LAWART.arts[key]) || {}).length;
   modal(`<h2>${esc(l.name)}</h2>
     <div class="row wrap" style="gap:7px;margin-bottom:14px">
       <span class="chip on">${esc(l.level || '')}</span>
       ${l.no ? `<span class="chip">${esc(l.no)}</span>` : ''}
       ${l.date ? `<span class="chip">${esc(l.date)}</span>` : ''}
+      ${cntArt ? `<span class="chip">已收录 ${cntArt} 条正文</span>` : ''}
     </div>
     ${l.note ? `<p style="font-size:13.5px;line-height:1.8;color:var(--ink-2)">${esc(l.note)}</p>` : ''}
-    <div class="section-head" style="margin:18px 0 8px"><h2 style="font-size:13px">关联考点 ${kps.length} 条</h2></div>
-    <div style="max-height:320px;overflow-y:auto">
-      ${kps.map((k) => `<div class="list-item" style="padding:9px 4px"><div class="li-main"><div class="t">${esc(k.topic)}</div>
-        <div class="s">${esc(k.cite)}</div></div>${hlBadge(k.hl)}</div>`).join('') || '<p class="tiny muted">无</p>'}
+    <div class="section-head" style="margin:18px 0 8px"><h2 style="font-size:13px">关联考点 ${kps.length} 条</h2>
+      <span class="hint">点「条文」直接看这条法条的内容</span></div>
+    <div style="max-height:340px;overflow-y:auto">
+      ${kps.map((k) => {
+        const pc = parseCite(k.cite);
+        const rec = pc ? lawArtRecord(pc.law, pc.art) : null;
+        const has = !!(rec && rec.rec);
+        return `<div class="list-item" style="padding:9px 4px;align-items:center">
+          <div class="li-main"><div class="t">${esc(k.topic)}</div><div class="s">${esc(k.cite)}</div></div>
+          ${hlBadge(k.hl)}
+          ${pc && has ? `<button class="btn sm ghost" data-act="law-art" data-law="${esc(pc.law)}" data-art="${esc(pc.art)}" data-back="${esc(l.name)}">条文</button>` : ''}
+          ${(DB.srcmap || {})[k.id] ? `<button class="btn sm ghost" data-act="src-jump-id" data-id="${k.id}" data-kw="">原文</button>` : ''}
+        </div>`;
+      }).join('') || '<p class="tiny muted">无</p>'}
     </div>
     <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>关闭</button></div>`);
-  $('#modalBox [data-close]').onclick = closeModal;
+  const c = $('#modalBox [data-close]'); if (c) c.onclick = closeModal;
 }
 function showExamDetail(i) {
   const e = state.exams[i]; if (!e) return;
@@ -1868,6 +1965,9 @@ function boot() {
       location.reload();
     });
   }
+
+  // 后台预载法条正文，「看条文」按钮直接可用
+  setTimeout(() => { ensureLawArt().then(() => { if (['learn', 'laws'].includes(state.view)) render(); }).catch(() => {}); }, 900);
 
   // 手机浏览器地址栏染色
   const tc = document.querySelector('meta[name="theme-color"]');
