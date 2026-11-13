@@ -257,7 +257,7 @@ function renderExamHistory() {
     <div class="card" style="overflow:hidden">
       ${state.exams.slice(-5).reverse().map((e) => `<div class="list-item" data-act="exam-detail" data-i="${state.exams.indexOf(e)}">
         <div class="li-main"><div class="t">${e.score} 分 · ${e.pass ? '<span class="pass">合格</span>' : '<span class="fail">未达标</span>'}</div>
-        <div class="s">${new Date(e.ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} · 用时 ${fmtTime(e.used || 0)} · 答对 ${e.correct}/${e.total}</div></div>
+        <div class="s">${esc(e.name || '标准卷')} · ${new Date(e.ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} · 用时 ${fmtTime(e.used || 0)} · 答对 ${e.correct}/${e.total}</div></div>
         <div style="font-size:20px;font-weight:700" class="${e.pass ? 'pass' : 'fail'}">${e.score}</div>
       </div>`).join('')}
     </div>`;
@@ -731,6 +731,12 @@ const EXAM_SPEC = [
   { type: 'judge', n: 10, score: 1 },
   { type: 'case', n: 1, score: 15 },
 ];
+// 四川政采专家续聘考试格式：25 单选 + 10 多选 + 15 判断，每题 2 分，满分 100，60 分及格
+const RENEW_SPEC = [
+  { type: 'single', n: 25, score: 2 },
+  { type: 'multi', n: 10, score: 2 },
+  { type: 'judge', n: 15, score: 2 },
+];
 
 function renderExam() {
   if (ui.exam && ui.exam.phase === 'run') return renderExamRun();
@@ -739,38 +745,66 @@ function renderExam() {
   EXAM_SPEC.forEach((s) => { avail[s.type] = DB.questions.filter((q) => q.type === s.type).length; });
   const totalScore = EXAM_SPEC.reduce((a, s) => a + s.n * s.score, 0);
   const feasible = EXAM_SPEC.every((s) => avail[s.type] >= s.n);
+  const sets = DB.examSets || [];
+  const pass = DB.meta.passScore || 60;
 
   return `<div class="wrap">
     <div class="card exam-setup">
       <h2 style="font-size:19px;margin-bottom:6px">模拟考</h2>
-      <p class="muted tiny">${DB.meta.examDurationMin || 90} 分钟 · 满分 ${DB.meta.examFullScore || 100} 分 · ${DB.meta.passScore || 60} 分合格。交卷后给出逐题解析与薄弱章节建议。</p>
+      <p class="muted tiny">两种卷型：<b>续聘卷</b>按四川政采专家续聘考试格式（50 题 / 每题 2 分 / 60 分及格），<b>标准卷</b>是早前按培训资料编的 76 题综合卷。建议先考续聘卷。</p>
+    </div>
 
-      <div class="res-grid" style="margin-top:22px">
+    <div class="section-head" style="margin-top:22px"><h2>续聘考试格式 · 3 套</h2><span class="hint">25 单选 + 10 多选 + 15 判断 · 每题 2 分 · 满分 100</span></div>
+    <div class="res-grid">
+      ${sets.map((st, i) => `<div class="card res-item" style="align-items:stretch">
+        <b style="font-size:22px">${st.name}</b>
+        <span>${st.total} 题 · ${st.minutes} 分钟 · 满分 ${st.full}</span>
+        <div class="row" style="gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap">
+          <button class="btn primary sm" data-act="exam-start-renew" data-set="${i}">开始（${st.minutes} 分钟）</button>
+          <button class="btn sm" data-act="exam-practice-renew" data-set="${i}">练习</button>
+        </div>
+      </div>`).join('')}
+    </div>
+    <p class="tiny muted" style="margin-top:10px">三套卷互不重题，共 150 道；多选题<b>必须完全正确才得分</b>，错选、漏选均不得分。</p>
+
+    <div class="section-head" style="margin-top:26px"><h2>标准综合卷</h2><span class="hint">76 题 · ${DB.meta.examDurationMin || 90} 分钟 · 满分 100</span></div>
+    <div class="card exam-setup">
+      <div class="res-grid">
         ${EXAM_SPEC.map((s) => `<div class="card res-item">
           <b>${Math.min(s.n, avail[s.type])}<span style="font-size:12px;color:var(--ink-3)">题</span></b>
           <span>${TYPE_NAME[s.type]} · 每题 ${s.score} 分</span></div>`).join('')}
       </div>
       ${feasible ? '' : `<p class="tiny" style="color:var(--amber);margin-top:14px">⚠ 题库某类题量不足，本次按实际可用题量组卷，得分按百分制折算。</p>`}
-
-      <div class="row" style="margin-top:24px;gap:10px;flex-wrap:wrap">
+      <div class="row" style="margin-top:20px;gap:10px;flex-wrap:wrap">
         <button class="btn primary lg" data-act="exam-start">开始考试（${DB.meta.examDurationMin || 90} 分钟）</button>
         <button class="btn" data-act="exam-practice">练习模式（不计时）</button>
-        <span class="tiny muted">提示：考试中可用题号面板跳转、标记疑难题</span>
       </div>
     </div>
 
     <div class="card pad" style="margin-top:16px">
       <h3 style="font-size:13.5px;margin-bottom:10px">评分规则</h3>
       <table class="kbd-table">
-        <tr><td>单选题</td><td>每题 1 分，选错不得分</td></tr>
-        <tr><td>多选题</td><td>每题 2 分，<b>多选、少选、错选均不得分</b></td></tr>
-        <tr><td>判断题</td><td>每题 1 分</td></tr>
-        <tr><td>案例题</td><td>15 分，交卷时对照参考答案自评</td></tr>
-        <tr><td>合格线</td><td>${DB.meta.passScore || 60} 分（满分 100）</td></tr>
+        <tr><td>续聘卷</td><td>50 题，每题 <b>2 分</b>，满分 100，<b>${pass} 分及格</b></td></tr>
+        <tr><td>多选题</td><td><b>必须完全正确才得分</b>，错选、漏选均不得分</td></tr>
+        <tr><td>单选 / 判断</td><td>选对得分，不设倒扣</td></tr>
+        <tr><td>标准卷</td><td>单选 1 分 / 多选 2 分 / 判断 1 分 / 案例 15 分，同样 ${pass} 分及格</td></tr>
       </table>
     </div>
     ${renderExamHistory()}
   </div>`;
+}
+
+function buildRenewPaper(setIdx) {
+  const st = (DB.examSets || [])[setIdx];
+  if (!st) return null;
+  const paper = [];
+  for (const spec of RENEW_SPEC) {
+    for (const id of st.parts[spec.type] || []) {
+      const q = DB.questions.find((x) => x.id === id);
+      if (q) paper.push({ q, score: spec.score, got: 0, ans: null });
+    }
+  }
+  return paper;
 }
 
 function buildExamPaper() {
@@ -800,12 +834,16 @@ function buildExamPaper() {
   return paper;
 }
 
-function startExam(timed = true) {
-  const paper = buildExamPaper();
+function startExam(timed = true, opts = {}) {
+  const fmt = opts.format === 'renew' ? 'renew' : 'official';
+  const setIdx = fmt === 'renew' ? (opts.setIdx || 0) : null;
+  const st = fmt === 'renew' ? (DB.examSets || [])[setIdx] : null;
+  const paper = fmt === 'renew' ? (buildRenewPaper(setIdx) || []) : buildExamPaper();
   if (!paper.length) { toast('题库为空'); return; }
-  const dur = (DB.meta.examDurationMin || 90) * 60;
+  const dur = (fmt === 'renew' ? (st && st.minutes) || 60 : (DB.meta.examDurationMin || 90)) * 60;
   ui.exam = {
     phase: 'run', paper, i: 0, left: timed ? dur : null, timed,
+    fmt, setIdx, setName: st ? st.name : '标准卷', totalMin: Math.round(dur / 60),
     flags: new Set(), ts: Date.now(), startAt: Date.now(),
     timer: null, selfCase: 0,
   };
@@ -894,7 +932,7 @@ function submitExam() {
   s.phase = 'done';
   s.rawScore = totalScore; s.maxScore = maxScore; s.score = norm; s.correct = correct;
   s.used = Math.round((Date.now() - s.startAt) / 1000);
-  state.exams.push({ ts: Date.now(), score: norm, pass: norm >= (DB.meta.passScore || 60), used: s.used, correct, total: s.paper.length, detail: s.paper.map((it) => ({ id: it.q.id, ok: !!it.ok })) });
+  state.exams.push({ ts: Date.now(), score: norm, pass: norm >= (DB.meta.passScore || 60), used: s.used, correct, total: s.paper.length, fmt: s.fmt || 'official', name: s.setName || '标准卷', detail: s.paper.map((it) => ({ id: it.q.id, ok: !!it.ok })) });
   if (state.exams.length > 40) state.exams = state.exams.slice(-40);
   save();
   render();
@@ -917,15 +955,15 @@ function renderExamDone() {
     <div class="card pad">
       <div class="result-score">
         <div class="big ${pass ? 'pass' : 'fail'}">${s.score}</div>
-        <div class="lbl">${pass ? '✓ 达到合格线' : `差 ${(DB.meta.passScore || 60) - s.score} 分`} · 用时 ${fmtTime(s.used)} · 原始得分 ${s.rawScore}/${s.maxScore}</div>
+        <div class="lbl">${s.setName || '标准卷'} · ${pass ? '✓ 达到合格线' : `差 ${(DB.meta.passScore || 60) - s.score} 分`} · 用时 ${fmtTime(s.used)} · 原始得分 ${s.rawScore}/${s.maxScore}</div>
       </div>
       <div class="res-grid">
-        ${EXAM_SPEC.map((sp) => {
-          const items = s.paper.filter((it) => it.q.type === sp.type);
+        ${['single', 'multi', 'judge', 'case'].map((tp) => {
+          const items = s.paper.filter((it) => it.q.type === tp);
           if (!items.length) return '';
           const got = items.reduce((a, it) => a + (it.got || 0), 0);
           const max = items.reduce((a, it) => a + it.score, 0);
-          return `<div class="card res-item"><b>${got}<span style="font-size:12px;color:var(--ink-3)">/${max}</span></b><span>${TYPE_NAME[sp.type]}</span></div>`;
+          return `<div class="card res-item"><b>${got}<span style="font-size:12px;color:var(--ink-3)">/${max}</span></b><span>${TYPE_NAME[tp]}</span></div>`;
         }).join('')}
         <div class="card res-item"><b>${s.correct}/${s.paper.filter((i) => i.q.type !== 'case').length}</b><span>客观题答对</span></div>
       </div>
@@ -1190,7 +1228,14 @@ const ACT = {
   'exam-flag': () => { const s = ui.exam; s.flags.has(s.i) ? s.flags.delete(s.i) : s.flags.add(s.i); render(); },
   'exam-panel': () => { const p = $('.sheet'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
   'exam-submit': () => confirmSubmit(),
-  'exam-retry': () => { ui.exam = null; go('exam'); },
+  'exam-retry': () => {
+    const old = ui.exam;
+    ui.exam = null;
+    if (old && old.fmt === 'renew') startExam(true, { format: 'renew', setIdx: old.setIdx });
+    else startExam(true);
+  },
+  'exam-start-renew': (t) => startExam(true, { format: 'renew', setIdx: Number(t.dataset.set) }),
+  'exam-practice-renew': (t) => startExam(false, { format: 'renew', setIdx: Number(t.dataset.set) }),
   'exam-review-wrong': () => { const w = ui.exam.paper.filter((it) => it.q.type !== 'case' && !it.ok).map((it) => it.q); startQuiz(shuffle(w), '模考错题'); },
   'exam-goto-weak': (t) => { ui.filters.chapter = t.dataset.c; ui.filters.onlyNew = true; ui.learnQueue = null; ui.learnIdx = 0; go('learn'); },
   'self-score': (t) => { ui.exam.selfCase = Number(t.dataset.v); render(); },
