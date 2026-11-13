@@ -105,7 +105,19 @@ function toast(msg, ms = 1800) {
 function modal(html) {
   $('#modalBox').innerHTML = html;
   $('#modal').hidden = false;
+  // 统一派发：弹窗里的 data-act / data-goto / data-close 都由这里处理
+  $('#modalBox').onclick = (e) => {
+    const g = e.target.closest('[data-goto]');
+    if (g) { closeModal(); go(g.dataset.goto); return; }
+    const a = e.target.closest('[data-act]');
+    if (a) {
+      const R = ACT[a.dataset.act];
+      if (R) { R(a, e); return; }
+    }
+    if (e.target.closest('[data-close]')) closeModal();
+  };
 }
+
 function closeModal() { $('#modal').hidden = true; }
 $('#modal')?.addEventListener('click', (e) => { if (e.target.dataset.close !== undefined) closeModal(); });
 
@@ -1134,7 +1146,6 @@ function openLawArt(law, art, backName) {
         ${backName ? `<button class="btn sm" data-act="law-back" data-name="${esc(backName)}">← 返回法规</button>` : ''}
         <button class="btn" data-close>关闭</button>
       </div>`);
-    const c = $('#modalBox [data-close]'); if (c) c.onclick = closeModal;
   }).catch(() => toast('法条数据加载失败'));
 }
 
@@ -1291,6 +1302,15 @@ const ACT = {
   'start-exam': () => go('exam'),
   'start-quiz': () => { ui.quiz = null; go('quiz'); },
   'print-manual': () => printManual(),
+  'theme': () => toggleTheme(),
+  'reset': () => { closeModal(); doReset(); },
+  'deactivate': () => {
+    if (!confirm('停用后需要重新输入学习码才能使用，确定？')) return;
+    try { localStorage.removeItem('sczc_license_v1'); } catch (e) {}
+    location.reload();
+  },
+  'export-progress': () => exportProgress(),
+  'import-progress': () => importProgress(),
   'dashboard': () => go('dash'),
   'exam-detail': (t) => showExamDetail(Number(t.dataset.i)),
 
@@ -1500,7 +1520,6 @@ function showQuestion(q, userAns) {
     ${userAns ? `<p class="tiny" style="margin-top:10px">你的答案：<b style="color:${ok ? 'var(--green)' : 'var(--red)'}">${userAns.map((x) => String.fromCharCode(65 + x)).join('') || '未答'}</b></p>` : ''}
     <div class="explain"><div>${emph(q.caseAnswer || q.explain)}</div><div class="src">📖 ${esc(q.cite || '')}</div></div>
     <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn" data-close>关闭</button></div>`);
-  $('#modalBox [data-close]').onclick = closeModal;
 }
 function showLaw(name) {
   const l = DB.laws.find((x) => x.name === name);
@@ -1545,7 +1564,6 @@ function showExamDetail(i) {
     <div class="result-score"><div class="big ${e.pass ? 'pass' : 'fail'}" style="font-size:48px">${e.score}</div>
     <div class="lbl">${new Date(e.ts).toLocaleString('zh-CN')} · 用时 ${fmtTime(e.used || 0)} · 答对 ${e.correct}/${e.total}</div></div>
     <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>关闭</button></div>`);
-  $('#modalBox [data-close]').onclick = closeModal;
 }
 
 function printManual() {
@@ -1694,25 +1712,7 @@ function showMore() {
       ${lic ? '<button class="btn sm" data-act="deactivate">⏏ 停用本机</button>' : ''}
     </div>
     <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" data-close>关闭</button></div>`);
-  $('#modalBox').onclick = (e) => {
-    const g = e.target.closest('[data-goto]');
-    if (g) { closeModal(); go(g.dataset.goto); return; }
-    const a = e.target.closest('[data-act]');
-    if (a) {
-      const act = a.dataset.act;
-      if (act === 'theme') { toggleTheme(); return; }
-      if (act === 'reset') { closeModal(); doReset(); return; }
-      if (act === 'deactivate') {
-        if (!confirm('停用后需要重新输入学习码才能使用，确定？')) return;
-        try { localStorage.removeItem('sczc_license_v1'); } catch (e) {}
-        location.reload(); return;
-      }
-      if (act === 'print-manual') { closeModal(); printManual(); return; }
-      if (act === 'export-progress') { exportProgress(); return; }
-      if (act === 'import-progress') { importProgress(); return; }
-    }
-    if (e.target.closest('[data-close]')) closeModal();
-  };
+
 }
 
 function exportProgress() {
@@ -1788,7 +1788,6 @@ function showHelp() {
       <li>考前 10 分钟只看：<b>数字表 + 红字考点 + 错题本</b>。</li>
     </ol>
     <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn" data-close>知道了</button></div>`);
-  $('#modalBox [data-close]').onclick = closeModal;
 }
 
 /* ═══════════ 主题 / 重置 ═══════════ */
