@@ -119,11 +119,13 @@ function starStr(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
 /* ═══════════ 路由 ═══════════ */
 const VIEWS = {
   dash: renderDash, learn: renderLearn, flash: renderFlash, numbers: renderNumbers,
-  confuse: renderConfuse, quiz: renderQuiz, exam: renderExam, wrong: renderWrong, laws: renderLaws,
+  confuse: renderConfuse, quiz: renderQuiz, exam: renderExam, wrong: renderWrong,
+  sources: renderSources, laws: renderLaws,
 };
 const VIEW_NAME = {
   dash: '总览', learn: '考点卡片', flash: '闪卡自测', numbers: '数字速记',
-  confuse: '易混辨析', quiz: '刷题', exam: '模拟考', wrong: '错题本', laws: '法规速查',
+  confuse: '易混辨析', quiz: '刷题', exam: '模拟考', wrong: '错题本',
+  sources: '原始文件', laws: '法规速查',
 };
 
 function go(view) {
@@ -150,6 +152,7 @@ const MORE_VIEWS = [
   { v: 'confuse', n: '易混辨析', d: '26 组对比，专治多选第二个干扰项' },
   { v: 'exam', n: '模拟考', d: '90 分钟 / 100 分 / 60 分合格' },
   { v: 'wrong', n: '错题本', d: '答错的题自动收集' },
+  { v: 'sources', n: '原始文件', d: '按页浏览本次录入的原始材料' },
   { v: 'laws', n: '法规速查', d: '49 部法规与考点索引' },
 ];
 function syncTabbar(view) {
@@ -374,6 +377,7 @@ function renderLearn() {
     <div class="learn-nav">
       <button class="btn" data-act="prev-kp">← 上一张</button>
       <button class="btn ghost sm" data-act="random-kp">随机</button>
+      ${(DB.srcmap || {})[k.id] ? `<button class="btn ghost sm" data-act="src-jump-id" data-id="${k.id}" title="看教材原文">📄 原文 P${DB.srcmap[k.id][1]}</button>` : ''}
       <button class="btn primary" data-act="next-kp">下一张 →</button>
     </div>
   </div>`;
@@ -1049,6 +1053,94 @@ function renderWrong() {
 }
 
 /* ═══════════════════════════════════════════════════
+   原始文件浏览
+   ═══════════════════════════════════════════════════ */
+let srcPending = null;
+function ensureSourceDoc(id) {
+  if (window.__SRC && window.__SRC[id]) return Promise.resolve(window.__SRC[id]);
+  if (srcPending && srcPending.id === id) return srcPending.p;
+  const p = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'src/' + id + '.js';
+    sc.onload = () => { const d = window.__SRC && window.__SRC[id]; d ? res(d) : rej(new Error('empty')); };
+    sc.onerror = () => rej(new Error('load'));
+    document.body.appendChild(sc);
+  });
+  srcPending = { id, p };
+  return p;
+}
+const srcDoc = (id) => (DB.sources || []).find((d) => d.id === id) || null;
+
+function hiliteAll(raw, kw) {
+  if (!kw) return esc(raw);
+  const low = String(raw).toLowerCase(), k = String(kw).toLowerCase();
+  let i = 0, from = 0, out = '', hits = 0;
+  while ((i = low.indexOf(k, i)) >= 0) {
+    out += esc(raw.slice(from, i)) + '<mark>' + esc(raw.slice(i, i + k.length)) + '</mark>';
+    i += k.length; from = i; hits++;
+    if (hits > 300) break;
+  }
+  return out + esc(raw.slice(from));
+}
+
+function jumpToSource(id, kw) {
+  const m = (DB.srcmap || {})[id];
+  if (!m) { toast('这条内容没关联到原文'); return; }
+  ui.src = { doc: m[0], page: m[1], q: kw || '' };
+  if (state.view === 'sources') render(); else go('sources');
+  ensureSourceDoc(m[0]).then(() => {
+    if (state.view === 'sources') render();
+    setTimeout(() => { const mk = document.querySelector('.src-body mark'); if (mk && mk.scrollIntoView) mk.scrollIntoView({ block: 'center' }); }, 220);
+  }).catch(() => toast('原文加载失败，请检查网络'));
+}
+
+function renderSources() {
+  const docs = DB.sources || [];
+  if (!docs.length) {
+    return `<div class="wrap"><div class="card pad"><h2>原始文件</h2>
+      <p class="muted">还没有生成原文数据。请在项目根目录运行 <code>node tools/build-sources.mjs</code> 后重新构建。</p></div></div>`;
+  }
+  if (!ui.src) ui.src = { doc: docs[0].id, page: 1, q: '' };
+  const meta = srcDoc(ui.src.doc) || docs[0];
+  const loaded = window.__SRC && window.__SRC[ui.src.doc];
+  if (!loaded) {
+    ensureSourceDoc(ui.src.doc).then(() => { if (state.view === 'sources') render(); }).catch(() => toast('原文加载失败，请检查网络'));
+  }
+  return `<div class="wrap">
+    <div class="card pad">
+      <h2 style="font-size:18px;margin-bottom:6px">原始文件</h2>
+      <p class="tiny muted">本次录入的 ${docs.length} 份原始材料，按页直接读。搜索结果的「原文」按钮会跳到对应页并高亮关键词。</p>
+      <div class="row wrap" style="gap:8px;margin-top:12px">
+        ${docs.map((d) => `<button class="chip chip-btn ${d.id === ui.src.doc ? 'on' : ''}" data-act="src-doc" data-id="${d.id}">
+          ${esc(d.name)} <span class="tiny">${d.pages}页</span></button>`).join('')}
+      </div>
+    </div>
+    ${loaded ? renderSrcReader(loaded) : `<div class="card pad" style="margin-top:14px"><p class="muted">正在载入 ${esc(meta.name)}…</p></div>`}
+  </div>`;
+}
+
+function renderSrcReader(doc) {
+  const total = doc.pages.length;
+  const cur = Math.min(Math.max(1, ui.src.page || 1), total);
+  const pg = doc.pages[cur - 1] || { t: '' };
+  const nav = (dis) => `<button class="btn sm" data-act="src-prev" ${cur <= 1 ? 'disabled' : ''}>← 上一页</button>
+    <button class="btn sm" data-act="src-next" ${cur >= total ? 'disabled' : ''}>下一页 →</button>`;
+  return `<div class="card pad" style="margin-top:14px">
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><b>${esc(doc.name)}</b> <span class="tiny muted">${esc(doc.note || '')} · 第 ${cur} / ${total} 页${pg.from ? ` · 第 ${pg.from}-${pg.to} 题` : ''}</span></div>
+      <div class="row" style="gap:8px;align-items:center">
+        ${nav()}
+        <input class="input sm" id="srcJumpInput" style="width:72px;padding:6px 8px" placeholder="页码">
+        <button class="btn sm" data-act="src-jump">跳转</button>
+      </div>
+    </div>
+    ${ui.src.q ? `<div class="tiny muted" style="margin-top:8px">高亮：<b>${esc(ui.src.q)}</b> · <a href="#" data-act="src-clear-q" style="color:var(--blue)">清除</a></div>` : ''}
+    <div class="src-body">${hiliteAll(pg.t || '（本页无可识别文字）', ui.src.q)}</div>
+    <div class="row" style="justify-content:center;margin-top:18px;gap:8px">${nav()}</div>
+  </div>`;
+}
+
+/* ═══════════════════════════════════════════════════
    法规速查
    ═══════════════════════════════════════════════════ */
 let lawQ = '';
@@ -1235,6 +1327,17 @@ const ACT = {
     else startExam(true);
   },
   'exam-start-renew': (t) => startExam(true, { format: 'renew', setIdx: Number(t.dataset.set) }),
+  'src-doc': (t) => { ui.src = { doc: t.dataset.id, page: 1, q: '' }; render(); },
+  'src-prev': () => { ui.src.page = Math.max(1, (ui.src.page || 1) - 1); render(); },
+  'src-next': () => { ui.src.page = (ui.src.page || 1) + 1; render(); },
+  'src-jump': () => {
+    const i = $('#srcJumpInput'); const n = Number((i && i.value || '').replace(/\D/g, ''));
+    const doc = window.__SRC && window.__SRC[ui.src.doc];
+    if (!n || !doc) { toast('请输入页码'); return; }
+    ui.src.page = Math.min(Math.max(1, n), doc.pages.length); render();
+  },
+  'src-clear-q': () => { ui.src.q = ''; render(); },
+  'src-jump-id': (t) => jumpToSource(t.dataset.id, t.dataset.kw || ''),
   'exam-practice-renew': (t) => startExam(false, { format: 'renew', setIdx: Number(t.dataset.set) }),
   'exam-review-wrong': () => { const w = ui.exam.paper.filter((it) => it.q.type !== 'case' && !it.ok).map((it) => it.q); startQuiz(shuffle(w), '模考错题'); },
   'exam-goto-weak': (t) => { ui.filters.chapter = t.dataset.c; ui.filters.onlyNew = true; ui.learnQueue = null; ui.learnIdx = 0; go('learn'); },
@@ -1616,17 +1719,21 @@ function doSearch(kw) {
   d.innerHTML = `
     ${kps.length ? `<div class="chip" style="margin:6px">考点 ${kps.length}</div>` + kps.map((k) => `<div class="sd-item" data-kind="kp" data-id="${k.id}">
       <span class="sd-tag" style="color:${chColor(k.chapter)}">${esc((CH.get(k.chapter) || {}).short || '')}</span>
-      <div style="min-width:0;flex:1"><div class="k">${esc(k.topic)}</div><div class="d">${esc(k.core)}</div></div></div>`).join('') : ''}
+      <div style="min-width:0;flex:1"><div class="k">${esc(k.topic)}</div><div class="d">${esc(k.core)}</div></div>
+      ${(DB.srcmap || {})[k.id] ? `<button class="btn sm ghost" data-src="${k.id}" data-kw="${esc(kw)}" title="跳到原文">原文</button>` : ''}</div>`).join('') : ''}
     ${nums.length ? `<div class="chip" style="margin:6px">数字</div>` + nums.map((n) => `<div class="sd-item" data-kind="num" data-q="${esc(n.k)}">
       <span class="sd-tag">№</span><div style="flex:1"><div class="k">${esc(n.k)}</div><div class="d">${esc(n.v)}</div></div></div>`).join('') : ''}
     ${qs.length ? `<div class="chip" style="margin:6px">题目 ${qs.length}</div>` + qs.map((q) => `<div class="sd-item" data-kind="q" data-id="${q.id}">
       <span class="sd-tag">${TYPE_NAME[q.type]}</span>
-      <div style="min-width:0;flex:1"><div class="k">${esc(q.stem.slice(0, 46))}${q.stem.length > 46 ? '…' : ''}</div><div class="d">${esc(q.cite || '')}</div></div></div>`).join('') : ''}
+      <div style="min-width:0;flex:1"><div class="k">${esc(q.stem.slice(0, 46))}${q.stem.length > 46 ? '…' : ''}</div><div class="d">${esc(q.cite || '')}</div></div>
+      ${(DB.srcmap || {})[q.id] ? `<button class="btn sm ghost" data-src="${q.id}" data-kw="${esc(kw)}" title="跳到原文">原文</button>` : ''}</div>`).join('') : ''}
   `;
   document.body.appendChild(d);
   searchDrop = d;
   const first = d.querySelector('.sd-item'); if (first) first.classList.add('sel');
   d.onclick = (e) => {
+    const sj = e.target.closest('[data-src]');
+    if (sj) { d.remove(); searchDrop = null; $('#globalSearch').blur(); jumpToSource(sj.dataset.src, sj.dataset.kw || ''); return; }
     const it = e.target.closest('.sd-item'); if (!it) return;
     d.remove(); searchDrop = null; $('#globalSearch').blur();
     if (it.dataset.kind === 'kp') { ACT['open-kp']({ dataset: { id: it.dataset.id } }); }
@@ -1659,6 +1766,7 @@ function mSearchRender(kw) {
       `<div class="list-item" data-kp="${k.id}" style="border-radius:10px">
         <span class="sd-tag" style="color:${chColor(k.chapter)}">${esc((CH.get(k.chapter) || {}).short || '')}</span>
         <div class="li-main"><div class="t">${esc(k.topic)}</div><div class="s">${esc(k.core)}</div></div>
+        ${(DB.srcmap || {})[k.id] ? `<button class="btn sm ghost" data-src="${k.id}" data-kw="${esc(kw)}">原文</button>` : ''}
       </div>`).join('') : '') +
     (nums.length ? `<div class="chip" style="margin:14px 6px 6px">数字 ${nums.length}</div>` + nums.map((n) =>
       `<div class="list-item" data-num="${esc(n.k)}" style="border-radius:10px">
@@ -1669,6 +1777,7 @@ function mSearchRender(kw) {
       `<div class="list-item" data-q="${q.id}" style="border-radius:10px">
         <span class="sd-tag">${TYPE_NAME[q.type]}</span>
         <div class="li-main"><div class="t">${esc(q.stem.slice(0, 50))}${q.stem.length > 50 ? '…' : ''}</div><div class="s">${esc(q.cite || '')}</div></div>
+        ${(DB.srcmap || {})[q.id] ? `<button class="btn sm ghost" data-src="${q.id}" data-kw="${esc(kw)}">原文</button>` : ''}
       </div>`).join('') : '');
 }
 
@@ -1720,6 +1829,8 @@ function boot() {
   mi.oninput = () => { clearTimeout(mt); mt = setTimeout(() => mSearchRender(mi.value), 120); };
   mi.onkeydown = (e) => { if (e.key === 'Enter') { const f = $('.list-item', $('#msearchResults')); if (f) f.click(); } };
   $('#msearchResults').onclick = (e) => {
+    const sj = e.target.closest('[data-src]');
+    if (sj) { $('#msearch').hidden = true; jumpToSource(sj.dataset.src, sj.dataset.kw || ''); return; }
     const it = e.target.closest('[data-kp],[data-q],[data-num]');
     if (!it) return;
     $('#msearch').hidden = true;

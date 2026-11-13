@@ -876,3 +876,14 @@ html[data-theme="dark"] .toast { background: #e9eef4; color: #0e1116; }
   .gate-card h1 { font-size: 17.5px; }
   .gate-card input { height: 48px; font-size: 16px; }
 }
+
+/* ═══════════ 原始文件浏览 ═══════════ */
+.src-body{
+  margin-top:12px; padding:16px 18px; border-radius:12px;
+  background:var(--panel-2); border:1px solid var(--line-2);
+  white-space:pre-wrap; word-break:break-word; line-height:1.95;
+  font-size:14px; color:var(--ink); max-height:64vh; overflow:auto;
+}
+.src-body mark{ background:var(--amber-soft); color:inherit; padding:1px 2px; border-radius:3px; box-shadow:0 0 0 1px var(--amber) inset; }
+html[data-theme="dark"] .src-body mark{ background:rgba(250,176,5,.28); }
+.src-body:empty::after{ content:"（本页无文字）"; color:var(--ink-3); }
